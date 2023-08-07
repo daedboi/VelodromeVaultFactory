@@ -128,7 +128,7 @@ contract VelodromeGlobal {
     address public treasury = 0x84654e35E504452769757AAe5a8C7C6599cBf954;
 
     /// @notice Address to use for strategy keepers.
-    address public keeper = 0x9Ce0115381f009E382acd52761127eFF61061482;
+    address public keeper = 0xC6387E937Bcef8De3334f80EDC623275d42457ff;
 
     /// @notice Address to use for strategy health check.
     address public healthCheck = 0x3d8F58774611676fd196D26149C71a9142C45296;
