@@ -10,7 +10,6 @@ interface IVelodromeRouter {
         address from;
         address to;
         bool stable;
-        address factory;
     }
 
     function addLiquidity(
@@ -25,6 +24,14 @@ interface IVelodromeRouter {
         uint256
     ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
 
+    function quoteAddLiquidity(
+        address tokenA,
+        address tokenB,
+        bool stable,
+        uint256 amountADesired,
+        uint256 amountBDesired
+    ) external view returns (uint256 amountA, uint256 amountB, uint256 liquidity);
+
     function swapExactTokensForTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -32,12 +39,6 @@ interface IVelodromeRouter {
         address to,
         uint256 deadline
     ) external returns (uint256[] memory amounts);
-
-    function quoteStableLiquidityRatio(
-        address token0,
-        address token1,
-        address factory
-    ) external view returns (uint256 ratio);
 }
 
 interface IVelodromeGauge {
@@ -61,12 +62,23 @@ interface IVelodromePool {
 
     function token1() external view returns (address);
 
-    function factory() external view returns (address);
-
     function getAmountOut(
         uint256 amountIn,
         address tokenIn
     ) external view returns (uint256 amount);
+
+    function metadata()
+        external
+        view
+        returns (
+            uint256 dec0,
+            uint256 dec1,
+            uint256 r0,
+            uint256 r1,
+            bool st,
+            address t0,
+            address t1
+        );
 }
 
 interface IDetails {
@@ -86,7 +98,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
 
     /// @notice Velodrome v2 router contract
     IVelodromeRouter public constant router =
-        IVelodromeRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858);
+        IVelodromeRouter(0x06374F57991CDc836E5A318569A910FE6456D230);
 
     /// @notice The percentage of VELO from each harvest that we send to our voter (out of 10,000).
     uint256 public localKeepVELO;
@@ -97,18 +109,15 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
     // this means all of our fee values are in basis points
     uint256 internal constant FEE_DENOMINATOR = 10000;
 
-    /// @notice The address of our base token (VELO v2)
+    /// @notice The address of our base token (PEARL)
     IERC20 public constant velo =
-        IERC20(0x9560e827aF36c94D2Ac33a39bCE1Fe78631088Db);
+        IERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
 
     /// @notice Token0 in our pool.
     IERC20 public poolToken0;
 
     /// @notice Token1 in our pool.
     IERC20 public poolToken1;
-
-    /// @notice Factory address that deployed our Velodrome pool.
-    address public factory;
 
     /// @notice True if our pool is stable, false if volatile.
     bool public isStablePool;
@@ -258,7 +267,6 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         isStablePool = pool.stable();
         poolToken0 = IERC20(pool.token0());
         poolToken1 = IERC20(pool.token1());
-        factory = pool.factory();
 
         // create our route state vars
         for (uint i; i < _veloSwapRouteForToken0.length; ++i) {
@@ -305,7 +313,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         // set our strategy's name
         stratName = string(
             abi.encodePacked(
-                "StrategyVelodromeFactory-",
+                "StrategyPearlFactory-",
                 IDetails(address(want)).symbol()
             )
         );
@@ -401,7 +409,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
 
             // if stable, do some more fancy math, not as easy as swapping half
             if (isStablePool) {
-                uint256 ratio = router.quoteStableLiquidityRatio(
+                uint256 ratio = quoteStableLiquidityRatio(
                     address(poolToken0),
                     address(poolToken1),
                     factory
@@ -481,6 +489,24 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
                 _loss = debt - assets;
             }
         }
+    }
+
+    function quoteStableLiquidityRatio() internal view returns (uint256 ratio) {
+        IVelodromePool pool = IVelodromePool(address(want));
+        (uint256 decimals0, uint256 decimals1, , , , address token0, address token1) = pool.metadata()
+
+        uint256 investment = decimals0;
+        uint256 out = pool.getAmountOut(investment, token0);
+        (uint256 amount0, uint256 amount1, ) = router.quoteAddLiquidity(token0, token1, true, investment, out);
+
+        amount0 = (amount0 * 1e18) / decimals0;
+        amount1 = (amount1 * 1e18) / decimals1;
+        out = (out * 1e18) / decimals1;
+        investment = (investment * 1e18) / decimals0;
+
+        ratio = (((out * 1e18) / investment) * amount0) / amount1;
+
+        return (investment * 1e18) / (ratio + 1e18);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -622,11 +648,12 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
     function claimableProfitInUsdc() public view returns (uint256) {
         // check price on our VELOv2/USDC pool
         uint256 veloPrice = IVelodromePool(
-            0x8134A2fDC127549480865fB8E5A9E8A8a95a54c5
+            0xf68c20d6C50706f6C6bd8eE184382518C93B368c
         ).getAmountOut(1e18, address(velo));
 
         // Pool returns amount as 6 decimals, so multiply by claimable VELO and divide by VELO decimals (1e18)
-        return (veloPrice * claimableRewards()) / 1e18;
+        // we add a division by 1e3 here since USDR has 9 decimals instead of 6
+        return (veloPrice * claimableRewards() / 1e3) / 1e18;
     }
 
     /// @notice Convert our keeper's eth cost into want
