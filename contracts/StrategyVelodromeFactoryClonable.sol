@@ -3,7 +3,7 @@ pragma solidity ^0.8.15;
 
 // These are the core Yearn libraries
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@yearnvaults/contracts/BaseStrategy.sol";
+import "https://github.com/yearn/yearn-vaults/blob/v0.4.6/contracts/BaseStrategy.sol";
 
 interface IVelodromeRouter {
     struct Routes {
@@ -86,7 +86,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
 
     /// @notice Velodrome v2 router contract
     IVelodromeRouter public constant router =
-        IVelodromeRouter(0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858);
+        IVelodromeRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
 
     /// @notice The percentage of VELO from each harvest that we send to our voter (out of 10,000).
     uint256 public localKeepVELO;
@@ -99,7 +99,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
 
     /// @notice The address of our base token (VELO v2)
     IERC20 public constant velo =
-        IERC20(0x9560e827aF36c94D2Ac33a39bCE1Fe78631088Db);
+        IERC20(0x940181a94A35A4569E4529A3CDfB74e38FD98631);
 
     /// @notice Token0 in our pool.
     IERC20 public poolToken0;
@@ -305,7 +305,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         // set our strategy's name
         stratName = string(
             abi.encodePacked(
-                "StrategyVelodromeFactory-",
+                "StrategyAerodromeFactory-",
                 IDetails(address(want)).symbol()
             )
         );
@@ -622,7 +622,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
     function claimableProfitInUsdc() public view returns (uint256) {
         // check price on our VELOv2/USDC pool
         uint256 veloPrice = IVelodromePool(
-            0x8134A2fDC127549480865fB8E5A9E8A8a95a54c5
+            0x2223F9FE624F69Da4D8256A7bCc9104FBA7F8f75
         ).getAmountOut(1e18, address(velo));
 
         // Pool returns amount as 6 decimals, so multiply by claimable VELO and divide by VELO decimals (1e18)

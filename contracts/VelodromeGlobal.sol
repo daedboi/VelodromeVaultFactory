@@ -116,25 +116,25 @@ contract VelodromeGlobal {
     IRegistry public registry;
 
     /// @notice Address to use for vault governance.
-    address public governance = 0xF5d9D6133b698cE29567a90Ab35CfB874204B3A7;
+    address public governance = 0xbfAABa9F56A39B814281D68d2Ad949e88D06b02E;
 
     /// @notice Address to use for vault management.
-    address public management = 0xea3a15df68fCdBE44Fdb0DB675B2b3A14a148b26;
+    address public management = 0x01fE3347316b2223961B20689C65eaeA71348e93;
 
     /// @notice Address to use for vault guardian.
-    address public guardian = 0xea3a15df68fCdBE44Fdb0DB675B2b3A14a148b26;
+    address public guardian = 0x01fE3347316b2223961B20689C65eaeA71348e93;
 
     /// @notice Address to use for vault and strategy rewards.
-    address public treasury = 0x84654e35E504452769757AAe5a8C7C6599cBf954;
+    address public treasury = 0x02ff746D8cb62709aEEc611CeC9B17d7dD1D3480;
 
     /// @notice Address to use for strategy keepers.
     address public keeper = 0xC6387E937Bcef8De3334f80EDC623275d42457ff;
 
     /// @notice Address to use for strategy health check.
-    address public healthCheck = 0x3d8F58774611676fd196D26149C71a9142C45296;
+    address public healthCheck = 0x8273217252254Ad7353f227aaEcd2b1C4A326Fa2;
 
     /// @notice Address to use for our network's base fee oracle.
-    address public baseFeeOracle = 0xbf4A735F123A9666574Ff32158ce2F7b7027De9A;
+    address public baseFeeOracle = 0x298Bd23E25C01440D68d4D2708bFf6A7E10a1db5;
 
     /// @notice Address of our Velodrome strategy implementation.
     address public velodromeStratImplementation;
@@ -143,7 +143,7 @@ contract VelodromeGlobal {
     uint256 public keepVELO;
 
     /// @notice The address of our Velodrome voter. This is where we send any keepVELO.
-    address public veloVoter = 0xF5d9D6133b698cE29567a90Ab35CfB874204B3A7;
+    address public veloVoter = 0x4444AAAACDBa5580282365e25b16309Bd770ce4a;
 
     /// @notice Minimum profit size in USDC that we want to harvest.
     uint256 public harvestProfitMinInUsdc = 1_000 * 1e6;
