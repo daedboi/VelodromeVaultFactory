@@ -3,7 +3,7 @@ pragma solidity ^0.8.15;
 
 // These are the core Yearn libraries
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "https://github.com/yearn/yearn-vaults/blob/v0.4.6/contracts/BaseStrategy.sol";
+import "@yearnvaults/contracts/BaseStrategy.sol";
 
 interface IVelodromeRouter {
     struct Routes {
@@ -32,6 +32,14 @@ interface IVelodromeRouter {
         address to,
         uint256 deadline
     ) external returns (uint256[] memory amounts);
+
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        Routes[] calldata routes,
+        address to,
+        uint256 deadline
+    ) external;
 
     function quoteStableLiquidityRatio(
         address token0,
@@ -134,6 +142,9 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
 
     // we use this to be able to adjust our strategy's name
     string internal stratName;
+
+    /// @notice Set to true if one of our pools contains fee on transfer or rebasing token
+    bool public isFeeOnTransfer;
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -411,23 +422,45 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
             }
 
             if (address(poolToken0) != address(velo)) {
-                router.swapExactTokensForTokens(
-                    amountToSwapToken0,
-                    0,
-                    swapRouteForToken0,
-                    address(this),
-                    block.timestamp
-                );
+                if (isFeeOnTransfer) {
+                    router
+                        .swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                            amountToSwapToken0,
+                            0,
+                            swapRouteForToken0,
+                            address(this),
+                            block.timestamp
+                        );
+                } else {
+                    router.swapExactTokensForTokens(
+                        amountToSwapToken0,
+                        0,
+                        swapRouteForToken0,
+                        address(this),
+                        block.timestamp
+                    );
+                }
             }
 
             if (address(poolToken1) != address(velo)) {
-                router.swapExactTokensForTokens(
-                    amountToSwapToken1,
-                    0,
-                    swapRouteForToken1,
-                    address(this),
-                    block.timestamp
-                );
+                if (isFeeOnTransfer) {
+                    router
+                        .swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                            amountToSwapToken1,
+                            0,
+                            swapRouteForToken1,
+                            address(this),
+                            block.timestamp
+                        );
+                } else {
+                    router.swapExactTokensForTokens(
+                        amountToSwapToken1,
+                        0,
+                        swapRouteForToken1,
+                        address(this),
+                        block.timestamp
+                    );
+                }
             }
 
             // check and see what we have after swaps
@@ -660,12 +693,15 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
     /// @dev Must be called by gov or management.
     /// @param _newSwapRouteForToken0 Swap route for VELO -> token0, using Routes structs.
     /// @param _newSwapRouteForToken1 Swap route for VELO -> token1, using Routes structs.
+    /// @param _isFeeOnTransfer Set to true if we have rebasing or fee on transfer tokens in the route.
     function setSwapRoutes(
         IVelodromeRouter.Routes[] memory _newSwapRouteForToken0,
-        IVelodromeRouter.Routes[] memory _newSwapRouteForToken1
+        IVelodromeRouter.Routes[] memory _newSwapRouteForToken1,
+        bool _isFeeOnTransfer
     ) external onlyVaultManagers {
         delete swapRouteForToken0;
         delete swapRouteForToken1;
+        isFeeOnTransfer = _isFeeOnTransfer;
 
         for (uint i; i < _newSwapRouteForToken0.length; ++i) {
             swapRouteForToken0.push(_newSwapRouteForToken0[i]);
