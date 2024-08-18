@@ -2,6 +2,7 @@ import pytest
 import brownie
 from brownie import interface, chain, accounts, ZERO_ADDRESS, Contract
 
+
 # returns (profit, loss) of a harvest
 def harvest_strategy(
     use_yswaps,
@@ -15,7 +16,7 @@ def harvest_strategy(
 
     # reset everything with a sleep and mine
     chain.sleep(1)
-    chain.mine(1)
+    chain.mine()
 
     # add in any custom logic needed here, for instance with router strategy (also reason we have a destination strategy).
     # also add in any custom logic needed to get raw reward assets to the strategy (like for liquity)
@@ -30,6 +31,11 @@ def harvest_strategy(
         strategy.setDoHealthCheck(False, {"from": gov})
         print("\nTurned off health check!\n")
 
+    # for velodrome, check if we have enough claimable VELO to clear our minimum threshold (10 VELO). if not, have a whale donate
+    if strategy.claimableRewards() > 0 and strategy.claimableRewards() < 10e18:
+        velo = Contract(strategy.velo())
+        velo.transfer(strategy, profit_amount, {"from": profit_whale})
+
     # we can use the tx for debugging if needed
     tx = strategy.harvest({"from": gov})
     profit = tx.events["Harvested"]["profit"]
@@ -40,7 +46,7 @@ def harvest_strategy(
 
     # reset everything with a sleep and mine
     chain.sleep(1)
-    chain.mine(1)
+    chain.mine()
 
     # return our profit, loss, extra value from trade handler
     return (profit, loss, extra)
@@ -55,7 +61,7 @@ def trade_handler_action(
     profit_amount,
 ):
     ####### ADD LOGIC AS NEEDED FOR SENDING REWARDS OUT AND PROFITS IN #######
-    # not needed for velodrome
+    # not needed for velodrome since we do atomic swaps
     return
 
 
@@ -175,7 +181,6 @@ def create_whale(
     velo.transfer(voter, 100_000e18, {"from": velo_whale})
     gauge.notifyRewardAmount(100_000e18, {"from": voter})
     chain.sleep(1)
-    chain.mine(1)
 
     # check that we have tokens
     token_bal = token.balanceOf(whale)
@@ -225,7 +230,6 @@ def create_stable_lp_whale(
     velo.transfer(voter, 100_000e18, {"from": velo_whale})
     gauge.notifyRewardAmount(100_000e18, {"from": voter})
     chain.sleep(1)
-    chain.mine(1)
 
     # check that we have tokens
     token_bal = token.balanceOf(whale)
@@ -277,7 +281,6 @@ def create_velo_lp_whale(
     velo.transfer(voter, 100_000e18, {"from": velo_whale})
     gauge.notifyRewardAmount(100_000e18, {"from": voter})
     chain.sleep(1)
-    chain.mine(1)
 
     # check that we have tokens
     token_bal = token.balanceOf(whale)

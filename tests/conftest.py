@@ -1,8 +1,7 @@
 import pytest
 from brownie import config, Contract, ZERO_ADDRESS, chain, interface, accounts
-from eth_abi import encode_single
 import requests
-from utils import create_whale, create_stable_lp_whale, create_velo_lp_whale
+
 
 # Snapshots the chain before each test and reverts after test completion.
 @pytest.fixture(scope="function", autouse=True)
@@ -13,13 +12,15 @@ def isolate(fn_isolation):
 # set this for if we want to use tenderly or not; mostly helpful because with brownie.reverts fails in tenderly forks.
 use_tenderly = False
 
-# use this to set what chain we use. 1 for ETH, 250 for fantom, 10 optimism, 42161 arbitrum
-chain_used = 10
+# use this to set what chain we use. 1 for ETH, 250 for fantom, 10 optimism, 42161 arbitrum, 8453 base
+chain_used = 8453
 
 
 ################################################## TENDERLY DEBUGGING ##################################################
 
+
 # change autouse to True if we want to use this fork to help debug tests
+# generally we don't need to use this anymore if we're using anvil for our RPC
 @pytest.fixture(scope="session", autouse=use_tenderly)
 def tenderly_fork(web3, chain):
     fork_base_url = "https://simulate.yearn.network/fork"
@@ -40,16 +41,12 @@ def tenderly_fork(web3, chain):
 
 @pytest.fixture(scope="session")
 def token():
-    token_address = "0x615B9dd61f1F9a80f5bcD33A53Eb79c37b20adDC"  # this should be the address of the ERC-20 used by the strategy/vault (BLU/USDC LP)
+    # this should be the address of the ERC-20 used by the strategy/vault
+    token_address = "0x03FF264046b085450649A993Cdd65dCDD01A893e"  # pwBLT-pHAM
     yield interface.IVeloPoolV2(token_address)
 
 
-# v2 velo/usdc pool: 0x8134A2fDC127549480865fB8E5A9E8A8a95a54c5 (liq here to swap fine)
-# will need to add liq to v2 BLU/USDC
-# v1 pool factory: 0x25CbdDb98b35ab1FF77413456B31EC81A6B6B746
-# v2 pool factory: 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a
-# v2 BLUE/USDC pool: 0x615B9dd61f1F9a80f5bcD33A53Eb79c37b20adDC
-# v1 BLUE/USDC pool: 0x662f16652A242aaD3C938c80864688e4d9B26A5e
+# v2 aero/usdc pool: 0x6cDcb1C4A4D1C3C6d054b27AC5B77e89eAFb971d (liq here to swap fine)
 
 
 @pytest.fixture(scope="function")
@@ -57,11 +54,8 @@ def whale(amount, token, gauge):
     # Totally in it for the tech
     # Update this with a large holder of your want token (the largest EOA holder of LP)
     whale = accounts.at(
-        "0x662f16652A242aaD3C938c80864688e4d9B26A5e", force=True
-    )  # 0x662f16652A242aaD3C938c80864688e4d9B26A5e, blu/USDC v1 pool
-
-    # make sure we'll have enough tokens
-    create_whale(token, whale, gauge)
+        "0xa5d981BC0Bc57500ffEDb2674c597F14a3Cb68c1", force=True
+    )  # 0xa5d981BC0Bc57500ffEDb2674c597F14a3Cb68c1, random EOA
 
     if token.balanceOf(whale) < 2 * amount:
         raise ValueError(
@@ -73,17 +67,18 @@ def whale(amount, token, gauge):
 # this is the amount of funds we have our whale deposit. adjust this as needed based on their wallet balance
 @pytest.fixture(scope="function")
 def amount(token):
-    amount = 0.3 * 10 ** token.decimals()  # 0.3 for blu/usdc!
+    amount = 60 * 10 ** token.decimals()  # 60 for pwBLT-pHAM
     yield amount
 
 
+# since we do atomic swaps and not yswaps for velodrome V2, this is actually a VELO whale to make sure we have enough to swap
 @pytest.fixture(scope="function")
-def profit_whale(profit_amount, token, whale):
+def profit_whale(profit_amount, to_sweep, whale):
     # ideally not the same whale as the main whale, or else they will lose money
     profit_whale = accounts.at(
-        "0x662f16652A242aaD3C938c80864688e4d9B26A5e", force=True
-    )  # 0x662f16652A242aaD3C938c80864688e4d9B26A5e, rETH pool, 7.7 tokens
-    if token.balanceOf(profit_whale) < 5 * profit_amount:
+        "0xeBf418Fe2512e7E6bd9b87a8F0f294aCDC67e6B4", force=True
+    )  # 0xeBf418Fe2512e7E6bd9b87a8F0f294aCDC67e6B4, AERO veNFT
+    if to_sweep.balanceOf(profit_whale) < 5 * profit_amount:
         raise ValueError(
             "Our profit whale needs more funds. Find another whale or reduce your profit_amount variable."
         )
@@ -92,14 +87,8 @@ def profit_whale(profit_amount, token, whale):
 
 @pytest.fixture(scope="function")
 def profit_amount(token):
-    profit_amount = 0.000001 * 10 ** token.decimals()
+    profit_amount = 11 * 10**18
     yield profit_amount
-
-
-@pytest.fixture(scope="session")
-def to_sweep(crv):
-    # token we can sweep out of strategy (use CRV)
-    yield crv
 
 
 # set address if already deployed, use ZERO_ADDRESS if not
@@ -284,6 +273,54 @@ elif chain_used == 10:  # optimism
     def keeper_wrapper(KeeperWrapper):
         yield KeeperWrapper.at("0x9Ce0115381f009E382acd52761127eFF61061482")
 
+elif chain_used == 8453:  # base
+
+    @pytest.fixture(scope="session")
+    def gov():
+        yield accounts.at("0xbfAABa9F56A39B814281D68d2Ad949e88D06b02E", force=True)
+
+    @pytest.fixture(scope="session")
+    def health_check():
+        yield interface.IHealthCheck("0x8273217252254Ad7353f227aaEcd2b1C4A326Fa2")
+
+    @pytest.fixture(scope="session")
+    def base_fee_oracle():
+        yield interface.IBaseFeeOracle("0x298Bd23E25C01440D68d4D2708bFf6A7E10a1db5")
+
+    @pytest.fixture(scope="session")
+    def management():
+        yield accounts.at("0x01fE3347316b2223961B20689C65eaeA71348e93", force=True)
+
+    @pytest.fixture(scope="session")
+    def rewards(management):
+        yield management
+
+    @pytest.fixture(scope="session")
+    def guardian(management):
+        yield management
+
+    @pytest.fixture(scope="session")
+    def strategist(management):
+        yield management
+
+    @pytest.fixture(scope="session")
+    def keeper(management):
+        yield management
+
+    @pytest.fixture(scope="session")
+    def to_sweep():
+        # token we can sweep out of strategy (use VELO v2)
+        yield interface.IERC20("0x940181a94A35A4569E4529A3CDfB74e38FD98631")
+
+    @pytest.fixture(scope="session")
+    def to_sweep_whale():
+        yield accounts.at("0xeBf418Fe2512e7E6bd9b87a8F0f294aCDC67e6B4", force=True)
+
+
+#     @pytest.fixture(scope="session")
+#     def keeper_wrapper(KeeperWrapper):
+#         yield KeeperWrapper.at("0x9Ce0115381f009E382acd52761127eFF61061482")
+
 
 @pytest.fixture(scope="function")
 def vault(pm, gov, rewards, guardian, management, token, vault_address):
@@ -302,6 +339,7 @@ def vault(pm, gov, rewards, guardian, management, token, vault_address):
 
 #################### FIXTURES BELOW LIKELY NEED TO BE ADJUSTED FOR THIS REPO ####################
 
+
 # use this similarly to how we use use_yswaps
 @pytest.fixture(scope="session")
 def is_gmx():
@@ -317,7 +355,7 @@ def target():
 # this should be a strategy from a different vault to check during migration
 @pytest.fixture(scope="session")
 def other_strategy():
-    yield Contract("0x4809143428Ed49D08978aDF209A4179d52ce5371")
+    yield Contract("0x321E9366a4Aaf40855713868710A306Ec665CA00")  # wBLT strategy
 
 
 # replace the first value with the name of your strategy
@@ -354,7 +392,9 @@ def strategy(
     vault.addStrategy(strategy, 10_000, 0, 2**256 - 1, 0, {"from": gov})
     print("New Vault, Velo Strategy")
     chain.sleep(1)
-    chain.mine(1)
+
+    # this strategy needs to use the fee on transfer fxns
+    strategy.setSwapRoutes(route0, route1, True, {"from": management})
 
     # turn our oracle into testing mode by setting the provider to 0x00, then forcing true
     strategy.setBaseFeeOracle(base_fee_oracle, {"from": management})
@@ -374,44 +414,58 @@ def strategy(
 
 @pytest.fixture(scope="session")
 def v1_pool_factory():
-    yield "0x25CbdDb98b35ab1FF77413456B31EC81A6B6B746"
+    yield "0x25CbdDb98b35ab1FF77413456B31EC81A6B6B746"  # not used by aero
 
 
 @pytest.fixture(scope="session")
 def v2_pool_factory():
-    yield "0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a"
+    yield "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"  # aero factory
 
 
 # route to swap from VELO v2 to USDC
 @pytest.fixture(scope="session")
-def route0(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
-    route0 = [(to_sweep.address, usdc, False, v2_pool_factory)]
+def route0(pham, usdc, pwblt, to_sweep, v2_pool_factory, v1_pool_factory):
+    route0 = [
+        (to_sweep.address, usdc, False, v2_pool_factory),
+        (usdc, pwblt, False, v2_pool_factory),
+        (pwblt, pham, False, v2_pool_factory),
+    ]
     yield route0
 
 
 # route to swap from VELO v2 to BLU (on v2)
 @pytest.fixture(scope="session")
-def route1(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def route1(pham, usdc, pwblt, to_sweep, v2_pool_factory, v1_pool_factory):
     route1 = [
         (to_sweep.address, usdc, False, v2_pool_factory),
-        (usdc, blue, False, v2_pool_factory),
+        (usdc, pwblt, False, v2_pool_factory),
     ]
     yield route1
 
 
 @pytest.fixture(scope="session")
+def usdbc():
+    yield "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA"
+
+
+@pytest.fixture(scope="session")
 def usdc():
-    yield "0x7F5c764cBc14f9669B88837ca1490cCa17c31607"
+    yield "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
+
+@pytest.fixture(scope="session")
+def pwblt():
+    yield "0x3Dd79d6BD927615787Cc95F2c7A77C9aC1AF26F4"
+
+
+@pytest.fixture(scope="session")
+def pham():
+    yield "0x2C8D2FC58B80aCb3b307C165af8F3eE296e6A271"
 
 
 @pytest.fixture(scope="session")
 def dola():
-    yield "0x8aE125E8653821E851F12A49F7765db9a9ce7384"
-
-
-@pytest.fixture(scope="session")
-def blue():
-    yield "0xa50B23cDfB2eC7c590e84f403256f67cE6dffB84"
+    yield "0x4621b7A9c75199271F773Ebd9A499dbd165c3191"
 
 
 # we don't use this, set it to 0 though since that's the index of our strategy
@@ -424,55 +478,53 @@ def which_strategy():
 # gauge for the curve pool
 @pytest.fixture(scope="session")
 def gauge():
-    gauge = "0x8166f06D50a65F82850878c951fcA29Af5Ea7Db2"  # v2 BLU/USDC
+    gauge = "0x19b05F319aC12296CB073218E912D0816030548F"  # pHAM-pwBLT
     yield Contract(gauge)
 
 
 # template vault just so we can create a template strategy for cloning
 @pytest.fixture(scope="session")
 def template_vault():
-    template_vault = "0xde8747070f81a5217bd812d3833F725f588E3dec"
+    template_vault = "0xc52229c6d30B1b2317F2838f7e0d9C65efeDc9aF"  # AERO-USDbC
     yield template_vault
 
 
 # gauge for our template vault pool
 @pytest.fixture(scope="session")
 def template_gauge():
-    template_gauge = "0x84195De69B8B131ddAa4Be4F75633fCD7F430b7c"  # VELO-USDC v2
+    template_gauge = "0x9a202c932453fB3d04003979B121E80e5A14eE7b"  # AERO-USDbC
     yield template_gauge
 
 
-# route to swap from VELO v2 to USDC
+# route to swap from AERO to USDC
 @pytest.fixture(scope="session")
-def template_route0(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def template_route0(usdbc, to_sweep, v2_pool_factory, v1_pool_factory):
     template_route0 = [
-        (to_sweep.address, usdc, False, v2_pool_factory),
+        (to_sweep.address, usdbc, False, v2_pool_factory),
     ]
     yield template_route0
 
 
 # route to swap from VELO v2 to...itself
 @pytest.fixture(scope="session")
-def template_route1(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def template_route1(usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     template_route1 = []
     yield template_route1
 
 
-# route to swap from VELO v2 to DOLA
 @pytest.fixture(scope="session")
-def random_route_1(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def random_route_1(usdbc, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     random_route_1 = [
         (to_sweep.address, usdc, False, v2_pool_factory),
-        (usdc, dola, False, v1_pool_factory),
+        (usdc, usdbc, True, v1_pool_factory),
     ]
     yield random_route_1
 
 
-# route to swap from DOLA to VELO
 @pytest.fixture(scope="session")
-def random_route_2(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def random_route_2(usdbc, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     random_route_2 = [
-        (dola, usdc, True, v1_pool_factory),
+        (usdbc, usdc, True, v1_pool_factory),
         (usdc, to_sweep.address, False, v2_pool_factory),
     ]
     yield random_route_2
@@ -496,6 +548,7 @@ def velo_template(
         template_route0,
         template_route1,
     )
+
     print("Velo Template deployed:", velo_template)
 
     yield velo_template
@@ -522,42 +575,43 @@ def velo_global(
 
 @pytest.fixture(scope="session")
 def new_registry():
-    yield Contract("0x79286Dd38C9017E5423073bAc11F53357Fc5C128")
+    yield Contract("0xF3885eDe00171997BFadAa98E01E167B53a78Ec5")
 
 
 ################# USE THESE VARS FOR TESTING HOW OTHER LP TOKENS WOULD FUNCTION #################
 
 ################# STABLE POOL #################
 
+
 # gauge for the curve pool
 @pytest.fixture(scope="session")
 def stable_gauge():
-    stable_gauge = "0xa1034Ed2C9eb616d6F7f318614316e64682e7923"  # v2 USDC/DOLA
+    stable_gauge = "0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885"  # v2 USDC/DOLA
     yield interface.IVeloV2Gauge(stable_gauge)
 
 
 @pytest.fixture(scope="session")
 def stable_token():
-    stable_token = "0xB720FBC32d60BB6dcc955Be86b98D8fD3c4bA645"  # this should be the address of the ERC-20 used by the strategy/vault (USDC/DOLA LP)
+    stable_token = "0xf213F2D02837012dC0236cC105061e121bB03e37"  # this should be the address of the ERC-20 used by the strategy/vault (USDC/DOLA LP)
     yield interface.IVeloPoolV2(stable_token)
 
 
-# route to swap from VELO v2 to USDC
+# route to swap from AERO to DOLA
 @pytest.fixture(scope="session")
-def stable_route0(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def stable_route0(dola, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     stable_route0 = [
         (to_sweep.address, usdc, False, v2_pool_factory),
+        (usdc, dola, True, v2_pool_factory),
     ]
     yield stable_route0
 
 
-# route to swap from VELO v2 to DOLA
+# route to swap from AERO to USDC
 @pytest.fixture(scope="session")
-def stable_route1(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def stable_route1(dola, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     # need to use v2 for USDC -> DOLA since we use v1 as our whale
     stable_route1 = [
         (to_sweep.address, usdc, False, v2_pool_factory),
-        (usdc, dola, True, v2_pool_factory),
     ]
     yield stable_route1
 
@@ -567,11 +621,8 @@ def stable_whale(stable_amount, stable_token, stable_gauge):
     # Totally in it for the tech
     # Update this with a large holder of your want token (the largest EOA holder of LP)
     stable_whale = accounts.at(
-        "0x6C5019D345Ec05004A7E7B0623A91a0D9B8D590d", force=True
-    )  # 0x6C5019D345Ec05004A7E7B0623A91a0D9B8D590d, USDC/DOLA v1 pool
-
-    # make sure we'll have enough tokens
-    create_stable_lp_whale(stable_token, stable_whale, stable_gauge)
+        "0x33bcc72aa126a3258178822d2B8019AaCc966c93", force=True
+    )  # 0x33bcc72aa126a3258178822d2B8019AaCc966c93, USDC/DOLA pool
 
     if stable_token.balanceOf(stable_whale) < 2 * stable_amount:
         raise ValueError(
@@ -583,7 +634,9 @@ def stable_whale(stable_amount, stable_token, stable_gauge):
 # this is the amount of funds we have our whale deposit. adjust this as needed based on their wallet balance
 @pytest.fixture(scope="function")
 def stable_amount(stable_token):
-    stable_amount = 1 * 10 ** stable_token.decimals()  # 1 for DOLA/USDC
+    stable_amount = (
+        0.0001 * 10 ** stable_token.decimals()
+    )  # 0.0001 for DOLA/USDC, total: 0.000501714971509605
     yield stable_amount
 
 
@@ -591,8 +644,8 @@ def stable_amount(stable_token):
 def stable_profit_whale(stable_profit_amount, stable_token):
     # ideally not the same whale as the main whale, or else they will lose money
     profit_whale = accounts.at(
-        "0x6C5019D345Ec05004A7E7B0623A91a0D9B8D590d", force=True
-    )  # 0x6C5019D345Ec05004A7E7B0623A91a0D9B8D590d,
+        "0x71AcF8CBf8C843a2dc88a6f3Ec6F93bbFeF3AD08", force=True
+    )  # 0x71AcF8CBf8C843a2dc88a6f3Ec6F93bbFeF3AD08,
     if stable_token.balanceOf(profit_whale) < 5 * stable_profit_amount:
         raise ValueError(
             "Our profit whale needs more funds. Find another whale or reduce your profit_amount variable."
@@ -604,8 +657,8 @@ def stable_profit_whale(stable_profit_amount, stable_token):
 @pytest.fixture(scope="function")
 def stable_profit_amount(stable_token):
     stable_profit_amount = (
-        0.0000003 * 10 ** stable_token.decimals()
-    )  # 0.003 for DOLA/MAI
+        0.0000005 * 10 ** stable_token.decimals()
+    )  # for DOLA/USDC 0.000106393728851859 total
     yield stable_profit_amount
 
 
@@ -659,7 +712,6 @@ def stable_strategy(
 
     print("New Vault, Velo Strategy")
     chain.sleep(1)
-    chain.mine(1)
 
     # turn our oracle into testing mode by setting the provider to 0x00, then forcing true
     strategy.setBaseFeeOracle(base_fee_oracle, {"from": management})
@@ -674,31 +726,32 @@ def stable_strategy(
 
 ################# VELO POOL #################
 
+
 # gauge for the curve pool
 @pytest.fixture(scope="session")
 def velo_gauge():
-    velo_gauge = "0x84195De69B8B131ddAa4Be4F75633fCD7F430b7c"  # v2 USDC/VELO
+    velo_gauge = "0x4F09bAb2f0E15e2A078A227FE1537665F55b8360"  # USDC/AERO
     yield interface.IVeloV2Gauge(velo_gauge)
 
 
 @pytest.fixture(scope="session")
 def velo_token():
-    velo_token = "0x8134A2fDC127549480865fB8E5A9E8A8a95a54c5"  # this should be the address of the ERC-20 used by the strategy/vault (USDC/VELOv2 LP)
+    velo_token = "0x6cDcb1C4A4D1C3C6d054b27AC5B77e89eAFb971d"  # this should be the address of the ERC-20 used by the strategy/vault USDC/AERO
     yield interface.IVeloPoolV2(velo_token)
 
 
-# route to swap from VELO v2 to USDC
+# route to swap from AERO v2 to USDC
 @pytest.fixture(scope="session")
-def velo_route0(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def velo_route0(dola, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     velo_route0 = [
         (to_sweep.address, usdc, False, v2_pool_factory),
     ]
     yield velo_route0
 
 
-# route to swap from VELO v2 to DOLA
+# route to swap from AERO
 @pytest.fixture(scope="session")
-def velo_route1(dola, usdc, blue, to_sweep, v2_pool_factory, v1_pool_factory):
+def velo_route1(dola, usdc, to_sweep, v2_pool_factory, v1_pool_factory):
     # need to use v2 for USDC -> DOLA since we use v1 as our whale
     velo_route1 = []
     yield velo_route1
@@ -709,11 +762,8 @@ def velo_whale(velo_amount, velo_token, velo_gauge):
     # Totally in it for the tech
     # Update this with a large holder of your want token (the largest EOA holder of LP)
     velo_whale = accounts.at(
-        "0xEdDc3369E15E9EfFa6e1eC2eE1ddc3CDf501E852", force=True
-    )  # 0xEdDc3369E15E9EfFa6e1eC2eE1ddc3CDf501E852, USDC/DOLA v1 pool
-
-    # make sure we'll have enough tokens
-    create_velo_lp_whale(velo_token, velo_whale, velo_gauge)
+        "0xc1342eE2B9d9E8f1B7A612131b69cf03261957E0", force=True
+    )  # 0xc1342eE2B9d9E8f1B7A612131b69cf03261957E0, USDC/AERO
 
     if velo_token.balanceOf(velo_whale) < 2 * velo_amount:
         raise ValueError(
@@ -725,7 +775,9 @@ def velo_whale(velo_amount, velo_token, velo_gauge):
 # this is the amount of funds we have our whale deposit. adjust this as needed based on their wallet balance
 @pytest.fixture(scope="function")
 def velo_amount(velo_token):
-    velo_amount = 0.05 * 10 ** velo_token.decimals()  # 0.05 for VELO/USDC
+    velo_amount = (
+        0.00001 * 10 ** velo_token.decimals()
+    )  # for AERO/USDC, total: 0.000122798730842673
     yield velo_amount
 
 
@@ -733,8 +785,8 @@ def velo_amount(velo_token):
 def velo_profit_whale(velo_profit_amount, velo_token):
     # ideally not the same whale as the main whale, or else they will lose money
     profit_whale = accounts.at(
-        "0xEdDc3369E15E9EfFa6e1eC2eE1ddc3CDf501E852", force=True
-    )  # 0xEdDc3369E15E9EfFa6e1eC2eE1ddc3CDf501E852,
+        "0x2ECd81E43C1F66185446F4af7DfEAa6AAE249f55", force=True
+    )  # 0x2ECd81E43C1F66185446F4af7DfEAa6AAE249f55,
     if velo_token.balanceOf(profit_whale) < 5 * velo_profit_amount:
         raise ValueError(
             "Our profit whale needs more funds. Find another whale or reduce your profit_amount variable."
@@ -745,7 +797,9 @@ def velo_profit_whale(velo_profit_amount, velo_token):
 # this is the amount of funds we have our whale deposit. adjust this as needed based on their wallet balance
 @pytest.fixture(scope="function")
 def velo_profit_amount(velo_token):
-    velo_profit_amount = 0.0000003 * 10 ** velo_token.decimals()  # 0.003 for DOLA/MAI
+    velo_profit_amount = (
+        0.00000005 * 10 ** velo_token.decimals()
+    )  # for USDC/AERO, total: 0.000088530174954435
     yield velo_profit_amount
 
 
@@ -799,7 +853,6 @@ def velo_strategy(
 
     print("New Vault, Velo Strategy")
     chain.sleep(1)
-    chain.mine(1)
 
     # turn our oracle into testing mode by setting the provider to 0x00, then forcing true
     strategy.setBaseFeeOracle(base_fee_oracle, {"from": management})

@@ -2,6 +2,7 @@ import pytest
 from utils import harvest_strategy, check_status
 from brownie import chain
 
+
 # test reducing the debtRatio on a strategy and then harvesting it
 def test_change_debt(
     gov,
@@ -176,7 +177,6 @@ def test_change_debt(
 
     # simulate five days of waiting for share price to bump back up
     chain.sleep(86400 * 5)
-    chain.mine(1)
 
     # check our current status
     print("\nAfter share price sleep")
@@ -335,7 +335,6 @@ def test_change_debt_with_profit(
 
     # sleep 5 days hours to allow share price to normalize
     chain.sleep(5 * 86400)
-    chain.mine(1)
 
     # check our current status
     print("\nAfter share price sleep")
