@@ -87,7 +87,7 @@ interface Vault {
     function addStrategy(address, uint256, uint256, uint256, uint256) external;
 }
 
-contract VelodromeGlobal {
+contract AerodromeGlobal {
     event NewAutomatedVault(
         uint256 indexed category,
         address indexed lpToken,
