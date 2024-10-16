@@ -405,14 +405,6 @@ contract VelodromeGlobal {
     function latestStandardVaultFromGauge(
         address _gauge
     ) public view returns (address) {
-        // make sure that our address is a gauge attached to the correct voter
-        IVelodromeVoter voter = IVelodromeVoter(
-            0x41C914ee0c7E1A5edCD0295623e6dC557B5aBf3C
-        );
-        if (!voter.isGauge(_gauge)) {
-            revert("not a v2 gauge");
-        }
-
         // grab our lp token from our gauge
         address lptoken = IVelodromeGauge(_gauge).stakingToken();
         address latest;
