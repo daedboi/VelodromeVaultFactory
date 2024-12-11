@@ -84,7 +84,11 @@ interface IDetails {
     function symbol() external view returns (string memory);
 }
 
-contract StrategyVelodromeFactoryClonable is BaseStrategy {
+interface IStakingRewardsMulti {
+    function notifyRewardAmount(address _rewardsToken, uint256 _rewardAmount) external;
+}
+
+contract StrategyVelodromeMultiRewards is BaseStrategy {
     using SafeERC20 for IERC20;
 
     /* ========== STATE VARIABLES ========== */
@@ -96,11 +100,11 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
     IVelodromeRouter public constant router =
         IVelodromeRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
 
-    /// @notice The percentage of VELO from each harvest that we send to our voter (out of 10,000).
+    /// @notice The percentage of VELO from each harvest that we send to our StakingRewardsMulti contract (out of 10,000).
     uint256 public localKeepVELO;
 
-    /// @notice The address of our Velodrome voter. This is where we send any keepVELO.
-    address public veloVoter;
+    /// @notice StakingRewardsMulti contract. This is where we send any keepVELO.
+    IStakingRewardsMulti public stakingRewardsMulti;
 
     // this means all of our fee values are in basis points
     uint256 internal constant FEE_DENOMINATOR = 10000;
@@ -312,6 +316,7 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         poolToken0.safeApprove(address(router), type(uint256).max);
         poolToken1.safeApprove(address(router), type(uint256).max);
         velo.approve(address(router), type(uint256).max);
+        velo.approve(address(stakingRewardsMulti), type(uint256).max);
 
         // set our strategy's name
         stratName = string(
@@ -390,16 +395,15 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         gauge.getReward(address(this));
         uint256 veloBalance = velo.balanceOf(address(this));
 
-        // by default this is zero, but if we want any for our voter this will be used
+        // by default this is zero, but if we want any for our StakingRewardsMulti contract this will be used
         uint256 _localKeepVELO = localKeepVELO;
-        address _veloVoter = veloVoter;
-        if (_localKeepVELO > 0 && _veloVoter != address(0)) {
-            uint256 sendToVoter;
+        if (_localKeepVELO > 0 && address(stakingRewardsMulti) != address(0)) {
+            uint256 sendToRewardsMulti;
             unchecked {
-                sendToVoter = (veloBalance * _localKeepVELO) / FEE_DENOMINATOR;
+                sendToRewardsMulti = (veloBalance * _localKeepVELO) / FEE_DENOMINATOR;
             }
-            if (sendToVoter > 0) {
-                velo.safeTransfer(_veloVoter, sendToVoter);
+            if (sendToRewardsMulti > 0) {
+                stakingRewardsMulti.notifyRewardAmount(address(velo), sendToRewardsMulti);
             }
             veloBalance = velo.balanceOf(address(this));
         }
@@ -736,17 +740,17 @@ contract StrategyVelodromeFactoryClonable is BaseStrategy {
         if (_keepVelo > 10_000) {
             revert();
         }
-        if (_keepVelo > 0 && veloVoter == address(0)) {
+        if (_keepVelo > 0 && address(stakingRewardsMulti) == address(0)) {
             revert();
         }
         localKeepVELO = _keepVelo;
     }
 
-    /// @notice Use this to set or update our voter contracts.
+    /// @notice Use this to set or update our StakingRewardsMulti contract.
     /// @dev For Velo strategies, this is where we send our keepVELO.
     ///  Only governance can set this.
-    /// @param _veloVoter Address of our velodrome voter.
-    function setVoter(address _veloVoter) external onlyGovernance {
-        veloVoter = _veloVoter;
+    /// @param _stakingRewardsMulti Address of our StakingRewardsMulti contract.
+    function setStakingRewardsMulti(address _stakingRewardsMulti) external onlyGovernance {
+        stakingRewardsMulti = IStakingRewardsMulti(_stakingRewardsMulti);
     }
 }
