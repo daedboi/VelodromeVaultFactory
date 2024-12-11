@@ -155,11 +155,13 @@ contract StrategyVelodromeMultiRewards is BaseStrategy {
     constructor(
         address _vault,
         address _gauge,
+        address _stakingRewardsMulti,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken0,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken1
     ) BaseStrategy(_vault) {
         _initializeStrat(
             _gauge,
+            _stakingRewardsMulti,
             _veloSwapRouteForToken0,
             _veloSwapRouteForToken1
         );
@@ -185,6 +187,7 @@ contract StrategyVelodromeMultiRewards is BaseStrategy {
         address _rewards,
         address _keeper,
         address _gauge,
+        address _stakingRewardsMulti,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken0,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken1
     ) external returns (address newStrategy) {
@@ -216,6 +219,7 @@ contract StrategyVelodromeMultiRewards is BaseStrategy {
             _rewards,
             _keeper,
             _gauge,
+            _stakingRewardsMulti,
             _veloSwapRouteForToken0,
             _veloSwapRouteForToken1
         );
@@ -238,12 +242,14 @@ contract StrategyVelodromeMultiRewards is BaseStrategy {
         address _rewards,
         address _keeper,
         address _gauge,
+        address _stakingRewardsMulti,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken0,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken1
     ) public {
         _initialize(_vault, _strategist, _rewards, _keeper);
         _initializeStrat(
             _gauge,
+            _stakingRewardsMulti,
             _veloSwapRouteForToken0,
             _veloSwapRouteForToken1
         );
@@ -252,13 +258,17 @@ contract StrategyVelodromeMultiRewards is BaseStrategy {
     // this is called by our original strategy, as well as any clones
     function _initializeStrat(
         address _gauge,
+        address _stakingRewardsMulti,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken0,
         IVelodromeRouter.Routes[] memory _veloSwapRouteForToken1
     ) internal {
         // make sure that we haven't initialized this before
-        if (address(gauge) != address(0)) {
+        if (address(gauge) != address(0) || address(stakingRewardsMulti) != address(0)) {
             revert("already initialized");
         }
+
+        // set up our stakingRewardsMulti contract
+        stakingRewardsMulti = IStakingRewardsMulti(_stakingRewardsMulti);
 
         // gauge, giver of life and VELO
         gauge = IVelodromeGauge(_gauge);
